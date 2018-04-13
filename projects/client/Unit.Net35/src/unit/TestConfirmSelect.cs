@@ -38,45 +38,37 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
-{
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
+using NUnit.Framework;
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
-    {
-        public RabbitMqConsoleEventListener()
+using System;
+using System.Text;
+
+namespace RabbitMQ.Client.Unit {
+    [TestFixture]
+    public class TestConfirmSelect : IntegrationFixture {
+
+        [Test]
+        public void TestConfirmSelectIdempotency()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            Model.ConfirmSelect();
+            Assert.AreEqual(1, Model.NextPublishSeqNo);
+            Publish();
+            Assert.AreEqual(2, Model.NextPublishSeqNo);
+            Publish();
+            Assert.AreEqual(3, Model.NextPublishSeqNo);
+
+            Model.ConfirmSelect();
+            Publish();
+            Assert.AreEqual(4, Model.NextPublishSeqNo);
+            Publish();
+            Assert.AreEqual(5, Model.NextPublishSeqNo);
+            Publish();
+            Assert.AreEqual(6, Model.NextPublishSeqNo);
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        protected void Publish()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
-
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Model.BasicPublish("", "amq.fanout", null, encoding.GetBytes("message"));
         }
     }
 }

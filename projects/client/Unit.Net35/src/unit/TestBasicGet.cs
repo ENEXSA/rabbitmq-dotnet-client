@@ -38,45 +38,46 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+using RabbitMQ.Client.Exceptions;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestBasicGet : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestBasicGetWithClosedChannel()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            WithNonEmptyQueue( (_, q) =>
+                {
+                    WithClosedModel(cm =>
+                    {
+                        Assert.Throws(Is.InstanceOf<AlreadyClosedException>(), () => cm.BasicGet(q, true));
+                    });
+                });
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestBasicGetWithEmptyResponse()
         {
-            foreach(var pl in eventData.Payload)
+            WithEmptyQueue((model, queue) =>
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+                BasicGetResult res = model.BasicGet(queue, false);
+                Assert.IsNull(res);
+            });
         }
 
-        public override void Dispose()
+        [Test]
+        public void TestBasicGetWithNonEmptyResponseAndAutoAckMode()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            const string msg = "for basic.get";
+            WithNonEmptyQueue((model, queue) =>
+            {
+                BasicGetResult res = model.BasicGet(queue, true);
+                Assert.AreEqual(msg, encoding.GetString(res.Body));
+                AssertMessageCount(queue, 0);
+            }, msg);
         }
     }
 }

@@ -1,4 +1,4 @@
-// This source code is dual-licensed under the Apache License, version
+﻿// This source code is dual-licensed under the Apache License, version
 // 2.0, and the Mozilla Public License, version 1.1.
 //
 // The APL v2.0:
@@ -38,45 +38,55 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.Collections.Generic;
+using System.Threading;
+//using System.Timers;
+using RabbitMQ.Client.Exceptions;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestFloodPublishing : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [SetUp]
+        public override void Init()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
+            var connFactory = new ConnectionFactory()
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+                RequestedHeartbeat = 60,
+                AutomaticRecoveryEnabled = false
+            };
+            Conn = connFactory.CreateConnection();
+            Model = Conn.CreateModel();
         }
 
-        public override void Dispose()
+        [Test, Category("LongRunning")]
+        public void TestUnthrottledFloodPublishing()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Conn.ConnectionShutdown += (_, args) =>
+            {
+                if (args.Initiator != ShutdownInitiator.Application)
+                {
+                    Assert.Fail("Unexpected connection shutdown!");
+                }
+            };
+
+            bool elapsed = false;
+            var t = new System.Threading.Timer((_obj) => { elapsed = true; }, null, 1000 * 185, -1);
+            /*
+            t.Elapsed += (_sender, _args) => { elapsed = true; };
+            t.AutoReset = false;
+            t.Start();
+*/
+            while (!elapsed)
+            {
+                Model.BasicPublish("", "", null, new byte[2048]);
+            }
+            Assert.IsTrue(Conn.IsOpen);
+            t.Dispose();
         }
     }
 }

@@ -38,45 +38,57 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
-{
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
+using NUnit.Framework;
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
-    {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
+using System;
+using System.Threading;
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+using RabbitMQ.Client.Events;
+using RabbitMQ.Client.Exceptions;
+
+namespace RabbitMQ.Client.Unit {
+    [TestFixture]
+    public class TestMainLoop : IntegrationFixture {
+
+        private class FaultyConsumer : DefaultBasicConsumer
         {
-            foreach(var pl in eventData.Payload)
+            public FaultyConsumer(IModel model) : base(model) {}
+
+            public override void HandleBasicDeliver(string consumerTag,
+                                               ulong deliveryTag,
+                                               bool redelivered,
+                                               string exchange,
+                                               string routingKey,
+                                               IBasicProperties properties,
+                                               byte[] body)
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                throw new Exception("I am a bad consumer");
             }
         }
 
-        public override void Dispose()
+        [Test]
+        public void TestCloseWithFaultyConsumer()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            ConnectionFactory connFactory = new ConnectionFactory();
+            IConnection c = connFactory.CreateConnection();
+            IModel m = Conn.CreateModel();
+            object o = new object();
+            string q = GenerateQueueName();
+            m.QueueDeclare(q, false, false, false, null);
+
+            CallbackExceptionEventArgs ea = null;
+            m.CallbackException += (_, evt) => {
+                ea = evt;
+                c.Close();
+                Monitor.PulseAll(o);
+            };
+            m.BasicConsume(q, true, new FaultyConsumer(Model));
+            m.BasicPublish("", q, null, encoding.GetBytes("message"));
+            WaitOn(o);
+
+            Assert.IsNotNull(ea);
+            Assert.AreEqual(c.IsOpen, false);
+            Assert.AreEqual(c.CloseReason.ReplyCode, 200);
         }
     }
 }

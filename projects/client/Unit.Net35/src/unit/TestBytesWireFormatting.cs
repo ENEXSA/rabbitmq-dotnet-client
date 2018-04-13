@@ -38,45 +38,50 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.IO;
+
+using RabbitMQ.Util;
+using RabbitMQ.Client.Content;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestBytesWireFormatting : WireFormattingFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestSingleDecoding()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            Assert.AreEqual(1.234f,
+                            BytesWireFormatting.ReadSingle(Reader
+                                                           (new byte[] { 63, 157, 243, 182 })));
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestSingleEncoding()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+            NetworkBinaryWriter w = Writer();
+            BytesWireFormatting.WriteSingle(w, 1.234f);
+            Check(w, new byte[] { 63, 157, 243, 182 });
         }
 
-        public override void Dispose()
+        [Test]
+        public void TestDoubleDecoding()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Assert.AreEqual(1.234,
+                            BytesWireFormatting.ReadDouble(Reader
+                                                           (new byte[] { 63, 243, 190, 118,
+                                                                         200, 180, 57, 88 })));
+        }
+
+        [Test]
+        public void TestDoubleEncoding()
+        {
+            NetworkBinaryWriter w = Writer();
+            BytesWireFormatting.WriteDouble(w, 1.234);
+            Check(w, new byte[] { 63, 243, 190, 118, 200, 180, 57, 88 });
         }
     }
 }

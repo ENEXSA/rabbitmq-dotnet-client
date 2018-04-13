@@ -38,45 +38,50 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.IO;
+
+using RabbitMQ.Util;
+using RabbitMQ.Client.Content;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    public class WireFormattingFixture
     {
-        public RabbitMqConsoleEventListener()
+        public static NetworkBinaryReader Reader(byte[] content)
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            return new NetworkBinaryReader(new MemoryStream(content));
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        public static NetworkBinaryWriter Writer()
         {
-            foreach(var pl in eventData.Payload)
+            return new NetworkBinaryWriter(new MemoryStream());
+        }
+
+        public static byte[] Contents(NetworkBinaryWriter w)
+        {
+            return ((MemoryStream)w.BaseStream).ToArray();
+        }
+
+        public void Check(NetworkBinaryWriter w, byte[] expected)
+        {
+            byte[] actual = Contents(w);
+            try
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                Assert.AreEqual(expected, actual);
             }
-        }
-
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            catch
+            {
+                Console.WriteLine();
+                Console.WriteLine("EXPECTED ==================================================");
+                DebugUtil.Dump(expected, Console.Out);
+                Console.WriteLine("ACTUAL ====================================================");
+                DebugUtil.Dump(actual, Console.Out);
+                Console.WriteLine("===========================================================");
+                throw;
+            }
         }
     }
 }

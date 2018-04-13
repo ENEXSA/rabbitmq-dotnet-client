@@ -35,48 +35,61 @@
 //  The Original Code is RabbitMQ.
 //
 //  The Initial Developer of the Original Code is Pivotal Software, Inc.
-//  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
+//  Copyright (c) 2013-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using System;
+using System.Collections.Generic;
+using RabbitMQ.Util;
+using NUnit.Framework;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestIntAllocator
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestRandomAllocation()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
+            int repeatCount = 10000;
+            int range = 100;
+            IList<int> allocated = new List<int>();
+            IntAllocator intAllocator = new IntAllocator(0, range);
+            Random rand = new Random();
+            while (repeatCount-- > 0)
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
+                if (rand.Next(2) == 0)
                 {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
+                    int a = intAllocator.Allocate();
+                    if (a > -1)
+                    {
+                        Assert.False(allocated.Contains(a));
+                        allocated.Add(a);
+                    }
                 }
-                else
+                else if (allocated.Count > 0)
                 {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
+                    int a = allocated[0];
+                    intAllocator.Free(a);
+                    allocated.RemoveAt(0);
                 }
             }
         }
 
-        public override void Dispose()
+        [Test]
+        public void TestAllocateAll()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            int range = 100;
+            IList<int> allocated = new List<int>();
+            IntAllocator intAllocator = new IntAllocator(0, range);
+            for (int i=0; i <= range; i++)
+            {
+                int a = intAllocator.Allocate();
+                Assert.AreNotEqual(-1, a);
+                Assert.False(allocated.Contains(a));
+                allocated.Add(a);
+            }
         }
     }
 }
+

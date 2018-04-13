@@ -38,45 +38,56 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    public class TestEndpointResolver : IEndpointResolver
     {
-        public RabbitMqConsoleEventListener()
+        private IEnumerable<AmqpTcpEndpoint> endpoints;
+        public TestEndpointResolver (IEnumerable<AmqpTcpEndpoint> endpoints)
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            this.endpoints = endpoints;
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        public IEnumerable<AmqpTcpEndpoint> All()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+            return endpoints;
+        }
+    }
+
+    class TestEndpointException : Exception
+    {
+        public TestEndpointException(string message) : base(message)
+        {
+        }
+    }
+
+    public class TestIEndpointResolverExtensions
+    {
+        [Test]
+        public void SelectOneShouldReturnDefaultWhenThereAreNoEndpoints()
+        {
+            var ep = new TestEndpointResolver(new List<AmqpTcpEndpoint>());
+            Assert.IsNull(ep.SelectOne<AmqpTcpEndpoint>((x) => null));
         }
 
-        public override void Dispose()
+        [Test]
+        public void SelectOneShouldRaiseThrownExceptionWhenThereAreOnlyInaccessibleEndpoints()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            var ep = new TestEndpointResolver(new List<AmqpTcpEndpoint> { new AmqpTcpEndpoint()});
+            var thrown = Assert.Throws<AggregateException>(() => ep.SelectOne<AmqpTcpEndpoint>((x) => { throw new TestEndpointException("bananas"); }));
+            Assert.That(thrown.InnerExceptions, Has.Exactly(1).TypeOf<TestEndpointException>());
+        }
+
+        [Test]
+        public void SelectOneShouldReturnFoundEndpoint()
+        {
+            var ep = new TestEndpointResolver(new List<AmqpTcpEndpoint> { new AmqpTcpEndpoint()});
+            Assert.IsNotNull(ep.SelectOne<AmqpTcpEndpoint>((e) => e));
         }
     }
 }

@@ -38,45 +38,44 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using System;
+using System.Threading;
+using NUnit.Framework;
+
+using RabbitMQ.Client.Impl;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestConnectionShutdown : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestShutdownSignalPropagationToChannels()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            var latch = new ManualResetEvent(false);
+
+            this.Model.ModelShutdown += (model, args) => {
+                latch.Set();
+            };
+            Conn.Close();
+
+            Wait(latch, TimeSpan.FromSeconds(3));
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestConsumerDispatcherShutdown()
         {
-            foreach(var pl in eventData.Payload)
+            var m = (AutorecoveringModel)Model;
+            var latch = new ManualResetEvent(false);
+
+            this.Model.ModelShutdown += (model, args) =>
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
-
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+                latch.Set();
+            };
+            Assert.IsFalse(m.ConsumerDispatcher.IsShutdown, "dispatcher should NOT be shut down before Close");
+            Conn.Close();
+            Wait(latch, TimeSpan.FromSeconds(3));
+            Assert.IsTrue(m.ConsumerDispatcher.IsShutdown, "dispatcher should be shut down after Close");
         }
     }
 }

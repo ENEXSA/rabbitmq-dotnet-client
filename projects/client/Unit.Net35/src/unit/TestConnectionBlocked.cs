@@ -38,45 +38,58 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
-{
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
+using System;
+using System.Threading;
+using NUnit.Framework;
+using RabbitMQ.Client.Events;
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+namespace RabbitMQ.Client.Unit
+{
+    [TestFixture]
+    public class TestConnectionBlocked : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        private readonly Object _lockObject = new Object();
+        private bool _notified;
+
+        public void HandleBlocked(object sender, ConnectionBlockedEventArgs args)
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            Unblock();
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+
+        public void HandleUnblocked(object sender, EventArgs ea)
         {
-            foreach(var pl in eventData.Payload)
+            lock (_lockObject)
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                _notified = true;
+                Monitor.PulseAll(_lockObject);
             }
         }
 
-        public override void Dispose()
+        protected override void ReleaseResources()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Unblock();
+        }
+
+        [Test]
+        public void TestConnectionBlockedNotification()
+        {
+            Conn.ConnectionBlocked += HandleBlocked;
+            Conn.ConnectionUnblocked += HandleUnblocked;
+
+            Block();
+            lock (_lockObject)
+            {
+                if (!_notified)
+                {
+                    Monitor.Wait(_lockObject, TimeSpan.FromSeconds(15));
+                }
+            }
+            if (!_notified)
+            {
+                Unblock();
+                Assert.Fail("Unblock notification not received.");
+            }
         }
     }
 }

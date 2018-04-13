@@ -117,9 +117,14 @@ namespace RabbitMQ.Client.Framing.Impl
                                                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                                                 .InformationalVersion;
 #else
+#if NET35
+        private static string version = ((AssemblyInformationalVersionAttribute)(typeof(Connection).Assembly.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute),false)[0]))
+                                                          .InformationalVersion;
+#else
         private static string version = typeof(Connection).Assembly
                                             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                                             .InformationalVersion;
+#endif
 #endif
 
         // true if we haven't finished connection negotiation.

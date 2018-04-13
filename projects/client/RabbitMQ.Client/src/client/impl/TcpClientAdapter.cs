@@ -22,10 +22,18 @@ namespace RabbitMQ.Client
             this.sock = socket;
         }
 
+#if NET35
+        public virtual Task ConnectAsync(string host, int port)
+#else
         public virtual async Task ConnectAsync(string host, int port)
+#endif
         {
             AssertSocket();
-            var adds = await Dns.GetHostAddressesAsync(host).ConfigureAwait(false);
+#if NET35
+            var adds = Dns.GetHostAddresses(host);
+#else
+           var adds = await Dns.GetHostAddressesAsync(host).ConfigureAwait(false);
+#endif
             var ep = TcpClientAdapterHelper.GetMatchingHost(adds, sock.AddressFamily);
             if (ep == default(IPAddress))
             {
@@ -36,6 +44,9 @@ namespace RabbitMQ.Client
             #else
             sock.Connect(ep, port);
             #endif
+#if NET35
+            return TaskEx.FromResult(0);
+#endif
         }
 
         public virtual void Close()
@@ -47,7 +58,11 @@ namespace RabbitMQ.Client
         {
             if (sock != null)
             {
+#if NET35
+                sock.Close();
+#else
                 sock.Dispose();
+#endif
             }
             sock = null;
         }

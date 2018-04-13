@@ -38,45 +38,54 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.IO;
+using System.Collections;
+using System.Collections.Generic;
+
+using RabbitMQ.Util;
+using RabbitMQ.Client.Content;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestMapMessage : WireFormattingFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestRoundTrip()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            NetworkBinaryWriter w = Writer();
+            Dictionary<string, object> t = new Dictionary<string, object>();
+            t["double"] = 1.234;
+            t["string"] = "hello";
+            MapWireFormatting.WriteMap(w, t);
+            IDictionary<string, object> t2 = MapWireFormatting.ReadMap(Reader(Contents(w)));
+            Assert.AreEqual(2, t2.Count);
+            Assert.AreEqual(1.234, t2["double"]);
+            Assert.AreEqual("hello", t2["string"]);
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestEncoding()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
+            NetworkBinaryWriter w = Writer();
+            Dictionary<string, object> t = new Dictionary<string, object>();
+            t["double"] = 1.234;
+            t["string"] = "hello";
+            MapWireFormatting.WriteMap(w, t);
+            Check(w, new byte[] {
+                0x00, 0x00, 0x00, 0x02,
 
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+                0x64, 0x6F, 0x75, 0x62, 0x6C, 0x65, 0x00,
+                0x09,
+                0x3F, 0xF3, 0xBE, 0x76, 0xC8, 0xB4, 0x39, 0x58,
+
+                0x73, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x00,
+                0x0A,
+                0x68, 0x65, 0x6C, 0x6C, 0x6F, 0x00
+            });
         }
     }
 }

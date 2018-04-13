@@ -54,11 +54,19 @@ namespace RabbitMQ.Client.Impl
 {
     static class TaskExtensions
     {
+#if NET35
+        public static Task CompletedTask = TaskEx.FromResult(0);
+#else
         public static Task CompletedTask = Task.FromResult(0);
+#endif
 
         public static async Task TimeoutAfter(this Task task, int millisecondsTimeout)
         {
+#if NET35
+            if (task == await TaskEx.WhenAny(task, TaskEx.Delay(millisecondsTimeout)).ConfigureAwait(false))
+#else
             if (task == await Task.WhenAny(task, Task.Delay(millisecondsTimeout)).ConfigureAwait(false))
+#endif
                 await task;
             else
                 throw new TimeoutException();

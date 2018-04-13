@@ -38,45 +38,80 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Impl;
+using System.Collections.Generic;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+  [TestFixture]
+  public class TestIModelAllocation
+  {
+    public const int CHANNEL_COUNT = 100;
+
+    IConnection C;
+
+    public int ModelNumber(IModel model)
     {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
-
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
-        }
+      return ((ModelBase)((AutorecoveringModel)model).Delegate).Session.ChannelNumber;
     }
+
+    [SetUp] public void Connect()
+    {
+      C = new ConnectionFactory().CreateConnection();
+    }
+
+    [TearDown] public void Disconnect()
+    {
+      C.Close();
+    }
+
+
+    [Test] public void AllocateInOrder()
+    {
+      for(int i = 1; i <= CHANNEL_COUNT; i++)
+        Assert.AreEqual(i, ModelNumber(C.CreateModel()));
+    }
+
+    [Test] public void AllocateAfterFreeingLast() {
+      IModel ch = C.CreateModel();
+      Assert.AreEqual(1, ModelNumber(ch));
+      ch.Close();
+      ch = C.CreateModel();
+      Assert.AreEqual(1, ModelNumber(ch));
+    }
+
+    public int CompareModels(IModel x, IModel y)
+    {
+      int i = ModelNumber(x);
+      int j = ModelNumber(y);
+      return (i < j) ? -1 : (i == j) ? 0 : 1;
+    }
+
+    [Test] public void AllocateAfterFreeingMany() {
+      List<IModel> channels = new List<IModel>();
+
+      for(int i = 1; i <= CHANNEL_COUNT; i++)
+        channels.Add(C.CreateModel());
+
+      foreach(IModel channel in channels){
+        channel.Close();
+      }
+
+      channels = new List<IModel>();
+
+      for(int j = 1; j <= CHANNEL_COUNT; j++)
+        channels.Add(C.CreateModel());
+
+      // In the current implementation the list should actually
+      // already be sorted, but we don't want to force that behaviour
+      channels.Sort(CompareModels);
+
+      int k = 1;
+      foreach(IModel channel in channels)
+        Assert.AreEqual(k++, ModelNumber(channel));
+    }
+  }
 }

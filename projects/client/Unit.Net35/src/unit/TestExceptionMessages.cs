@@ -38,45 +38,39 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+using System;
+using RabbitMQ.Client.Exceptions;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestExceptionMessages : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestAlreadyClosedExceptionMessage()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
+            var uuid = System.Guid.NewGuid().ToString();
+            try
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                Model.QueueDeclarePassive(uuid);
             }
-        }
+            catch (Exception e)
+            {
+                Assert.That(e, Is.TypeOf(typeof(OperationInterruptedException)));
+            }
 
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Assert.IsFalse(Model.IsOpen);
+
+            try
+            {
+                Model.QueueDeclarePassive(uuid);
+            }
+            catch (AlreadyClosedException e)
+            {
+                Assert.That(e, Is.TypeOf(typeof(AlreadyClosedException)));
+                Assert.IsTrue(e.Message.StartsWith("Already closed"));
+            }
         }
     }
 }

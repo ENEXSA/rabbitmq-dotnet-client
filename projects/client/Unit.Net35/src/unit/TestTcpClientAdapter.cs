@@ -38,45 +38,44 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+#if !NETFX_CORE
+using System;
+using System.Net;
+using System.Net.Sockets;
+using System.Threading;
+using NUnit.Framework;
+
+using RabbitMQ.Client;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestTcpClientAdapter
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TcpClientAdapterHelperGetMatchingHostReturnNoAddressIfFamilyDoesNotMatch()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
+            var address = IPAddress.Parse("127.0.0.1");
+            var matchingAddress = TcpClientAdapterHelper.GetMatchingHost(new[] { address }, AddressFamily.InterNetworkV6);
+            Assert.IsNull(matchingAddress);
         }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TcpClientAdapterHelperGetMatchingHostReturnsSingleAddressIfFamilyIsUnspecified()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+            var address = IPAddress.Parse("1.1.1.1");
+            var matchingAddress = TcpClientAdapterHelper.GetMatchingHost(new[] { address }, AddressFamily.Unspecified);
+            Assert.AreEqual(address, matchingAddress);
         }
 
-        public override void Dispose()
+        [Test]
+        public void TcpClientAdapterHelperGetMatchingHostReturnNoAddressIfFamilyIsUnspecifiedAndThereIsNoSingleMatch()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            var address = IPAddress.Parse("1.1.1.1");
+            var address2 = IPAddress.Parse("2.2.2.2");
+            var matchingAddress = TcpClientAdapterHelper.GetMatchingHost(new[] { address, address2 }, AddressFamily.Unspecified);
+            Assert.IsNull(matchingAddress);
         }
     }
 }
+#endif

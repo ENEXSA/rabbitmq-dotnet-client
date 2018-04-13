@@ -1,4 +1,4 @@
-// This source code is dual-licensed under the Apache License, version
+﻿// This source code is dual-licensed under the Apache License, version
 // 2.0, and the Mozilla Public License, version 1.1.
 //
 // The APL v2.0:
@@ -38,45 +38,43 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using System;
+using System.Threading;
+using NUnit.Framework;
+
+using RabbitMQ.Client.MessagePatterns;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    class TestSubscription : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [SetUp]
+        public override void Init()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
+            var connFactory = new ConnectionFactory()
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
+                AutomaticRecoveryEnabled = false
+            };
+            Conn = connFactory.CreateConnection();
+            Model = Conn.CreateModel();
         }
 
-        public override void Dispose()
+        [Test, MaxTime(16000)]
+        public void TestConsumerCancellationNotification()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            var q = Guid.NewGuid().ToString();
+            this.Model.QueueDeclare(queue: q, durable: false, exclusive: false, autoDelete: false, arguments: null);
+            var sub = new Subscription(this.Model, q);
+            var latch = new ManualResetEvent(false);
+            sub.Consumer.ConsumerCancelled += (_sender, _args) =>
+            {
+                sub.Close();
+                Conn.Close();
+                latch.Set();
+            };
+            this.Model.QueueDelete(q);
+            Wait(latch, TimeSpan.FromSeconds(8));
         }
     }
 }

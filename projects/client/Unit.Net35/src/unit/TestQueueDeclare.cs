@@ -38,45 +38,53 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
-{
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
+using NUnit.Framework;
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
-    {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
+using System;
+using System.Collections.Generic;
+using System.Threading;
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+using RabbitMQ.Client.Exceptions;
+
+namespace RabbitMQ.Client.Unit {
+    [TestFixture]
+    public class TestQueueDeclare : IntegrationFixture {
+
+        [Test]
+        [Category("RequireSMP")]
+        public void TestConcurrentQueueDeclare()
         {
-            foreach(var pl in eventData.Payload)
+            string q = GenerateQueueName();
+            Random rnd = new Random();
+
+            List<Thread> ts = new List<Thread>();
+            System.NotSupportedException nse = null;
+            for(int i = 0; i < 256; i++)
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                Thread t = new Thread(() =>
+                        {
+                            try
+                            {
+                                // sleep for a random amount of time to increase the chances
+                                // of thread interleaving. MK.
+                                Thread.Sleep(rnd.Next(5, 500));
+                                Model.QueueDeclare(q, false, false, false, null);
+                            } catch (System.NotSupportedException e)
+                            {
+                                nse = e;
+                            }
+                        });
+                ts.Add(t);
+                t.Start();
             }
-        }
 
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            foreach (Thread t in ts)
+            {
+                t.Join();
+            }
+
+            Assert.IsNotNull(nse);
+            Model.QueueDelete(q);
         }
     }
 }

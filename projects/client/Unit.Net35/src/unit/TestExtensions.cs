@@ -38,45 +38,55 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using System;
+using NUnit.Framework;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestExtensions : IntegrationFixture
     {
-        public RabbitMqConsoleEventListener()
+        [Test]
+        public void TestConfirmBarrier()
         {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
-
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
-        {
-            foreach(var pl in eventData.Payload)
+            Model.ConfirmSelect();
+            for (int i = 0; i < 10; i++)
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                Model.BasicPublish("", String.Empty, null, new byte[] {});
             }
+            Assert.That(Model.WaitForConfirms(), Is.True);
         }
 
-        public override void Dispose()
+        [Test]
+        public void TestConfirmBeforeWait()
         {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Assert.Throws(typeof (InvalidOperationException), () => Model.WaitForConfirms());
+        }
+
+        [Test]
+        public void TestExchangeBinding()
+        {
+            Model.ConfirmSelect();
+
+            Model.ExchangeDeclare("src", ExchangeType.Direct, false, false, null);
+            Model.ExchangeDeclare("dest", ExchangeType.Direct, false, false, null);
+            string queue = Model.QueueDeclare();
+
+            Model.ExchangeBind("dest", "src", String.Empty);
+            Model.ExchangeBind("dest", "src", String.Empty);
+            Model.QueueBind(queue, "dest", String.Empty);
+
+            Model.BasicPublish("src", String.Empty, null, new byte[] {});
+            Model.WaitForConfirms();
+            Assert.IsNotNull(Model.BasicGet(queue, true));
+
+            Model.ExchangeUnbind("dest", "src", String.Empty);
+            Model.BasicPublish("src", String.Empty, null, new byte[] {});
+            Model.WaitForConfirms();
+            Assert.IsNull(Model.BasicGet(queue, true));
+
+            Model.ExchangeDelete("src");
+            Model.ExchangeDelete("dest");
         }
     }
 }

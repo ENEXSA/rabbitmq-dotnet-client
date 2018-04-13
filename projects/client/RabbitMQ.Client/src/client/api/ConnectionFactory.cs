@@ -146,7 +146,11 @@ namespace RabbitMQ.Client
         /// The default AMQP URI SSL protocols.
         /// </summary>
         public static SslProtocols DefaultAmqpUriSslProtocols { get; set; } =
+#if NET35
+            SslProtocols.Tls;
+#else
             SslProtocols.Tls | SslProtocols.Tls11 | SslProtocols.Tls12;
+#endif
 
         /// <summary>
         /// The AMQP URI SSL protocols.

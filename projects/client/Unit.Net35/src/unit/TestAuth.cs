@@ -38,45 +38,41 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.IO;
+using System.Text;
+using System.Collections;
+
+using RabbitMQ.Client;
+using RabbitMQ.Client.Impl;
+using RabbitMQ.Client.Exceptions;
+using RabbitMQ.Util;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestAuth
     {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestAuthFailure()
         {
-            foreach(var pl in eventData.Payload)
+            ConnectionFactory connFactory = new ConnectionFactory();
+            connFactory.UserName = "guest";
+            connFactory.Password = "incorrect-password";
+
+            try
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
+                connFactory.CreateConnection();
+                Assert.Fail("Exception caused by authentication failure expected");
             }
-        }
-
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            catch (BrokerUnreachableException bue)
+            {
+                Assert.IsInstanceOf<AuthenticationFailureException>(bue.InnerException);
+            }
         }
     }
 }
+

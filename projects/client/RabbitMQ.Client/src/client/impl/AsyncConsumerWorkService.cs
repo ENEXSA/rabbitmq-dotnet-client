@@ -69,7 +69,11 @@ namespace RabbitMQ.Client
 
             public void Start()
             {
+#if NET35
+                task = Task.Factory.StartNew(Loop, CancellationToken.None);
+#else
                 task = Task.Run(Loop, CancellationToken.None);
+#endif
             }
 
             public void Enqueue(Work work)
@@ -87,8 +91,11 @@ namespace RabbitMQ.Client
                     {
                         await work.Execute(model).ConfigureAwait(false);
                     }
-
+#if NET35
+                    await TaskEx.WhenAny(TaskEx.Delay(waitTime, tokenSource.Token), messageArrived.Task).ConfigureAwait(false);
+#else
                     await Task.WhenAny(Task.Delay(waitTime, tokenSource.Token), messageArrived.Task).ConfigureAwait(false);
+#endif
                     messageArrived.TrySetResult(true);
                     messageArrived = new TaskCompletionSource<bool>();
                 }

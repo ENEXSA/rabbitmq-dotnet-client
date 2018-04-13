@@ -110,7 +110,11 @@ namespace RabbitMQ.Client.Events
             Raise(Shutdown, reason);
         }
 
+#if NET35
+        private void Raise<TEvent>(EventHandler<TEvent> eventHandler, TEvent evt) where TEvent : EventArgs
+#else
         private void Raise<TEvent>(EventHandler<TEvent> eventHandler, TEvent evt)
+#endif
         {
             var handler = eventHandler;
             if(handler != null)

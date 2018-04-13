@@ -38,45 +38,36 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
-{
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
+using NUnit.Framework;
 
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
-    {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
+using System;
+using System.Text;
+using System.Threading;
+using System.Diagnostics;
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+using RabbitMQ.Client.Events;
+
+namespace RabbitMQ.Client.Unit {
+    [TestFixture]
+    public class TestInvalidAck : IntegrationFixture {
+
+        [Test]
+        public void TestAckWithUnknownConsumerTagAndMultipleFalse()
         {
-            foreach(var pl in eventData.Payload)
+            object o = new Object();
+            bool shutdownFired = false;
+            ShutdownEventArgs shutdownArgs = null;
+            Model.ModelShutdown += (s, args) =>
             {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
+                shutdownFired = true;
+                shutdownArgs = args;
+                Monitor.PulseAll(o);
+            };
 
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            Model.BasicAck(123456, false);
+            WaitOn(o);
+            Assert.IsTrue(shutdownFired);
+            AssertPreconditionFailed(shutdownArgs);
         }
     }
 }

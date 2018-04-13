@@ -38,45 +38,40 @@
 //  Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 //---------------------------------------------------------------------------
 
-namespace RabbitMQ.Client.Logging
+using NUnit.Framework;
+
+using System;
+using System.IO;
+using System.Text;
+using System.Collections;
+
+using RabbitMQ.Client;
+using RabbitMQ.Client.Impl;
+using RabbitMQ.Client.Exceptions;
+using RabbitMQ.Util;
+
+namespace RabbitMQ.Client.Unit
 {
-    using System;
-    using System.Collections.Generic;
-#if NET451
-    using Microsoft.Diagnostics.Tracing;
-#elif NET35
-    using Microsoft.Diagnostics.Tracing;
-#else
-    using System.Diagnostics.Tracing;
-#endif
-
-    public sealed class RabbitMqConsoleEventListener : EventListener, IDisposable
+    [TestFixture]
+    public class TestConnectionWithBackgroundThreads
     {
-        public RabbitMqConsoleEventListener()
-        {
-            this.EnableEvents(RabbitMqClientEventSource.Log, EventLevel.Informational, RabbitMqClientEventSource.Keywords.Log);
-        }
 
-        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        [Test]
+        public void TestWithBackgroundThreadsEnabled()
         {
-            foreach(var pl in eventData.Payload)
-            {
-                var dict = pl as IDictionary<string, object>;
-                if(dict != null)
-                {
-                    var rex = new RabbitMqExceptionDetail(dict);
-                    Console.WriteLine("{0}: {1}", eventData.Level, rex.ToString());
-                }
-                else
-                {
-                    Console.WriteLine("{0}: {1}", eventData.Level, pl.ToString());
-                }
-            }
-        }
+            ConnectionFactory connFactory = new ConnectionFactory();
+            connFactory.UseBackgroundThreadsForIO = true;
 
-        public override void Dispose()
-        {
-            this.DisableEvents(RabbitMqClientEventSource.Log);
+            IConnection conn = connFactory.CreateConnection();
+            IModel ch = conn.CreateModel();
+
+            // sanity check
+            string q = ch.QueueDeclare();
+            ch.QueueDelete(q);
+
+            ch.Close();
+            conn.Close();
         }
     }
 }
+
